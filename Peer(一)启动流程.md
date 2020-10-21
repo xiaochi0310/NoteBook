@@ -150,6 +150,8 @@ main()主函数通过Cobra组件调用主命令Execute()方法，执行peer node
 
 ![1603101502893](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\1603101502893.png)
 
+peer node start 主要流程：主要在start子命令执行server()函数。（函数实现在peer/node/start.go文件）
+
 1、初始化服务启动的基本参数
 
 (1) 获取本地MSP组件类型
