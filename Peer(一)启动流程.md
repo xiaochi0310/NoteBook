@@ -1,4 +1,4 @@
-### Peer启动流程
+### Peer启动流程(一)
 
 ------
 
@@ -6,9 +6,9 @@
 
 main函数在main.go文件中
 
-一、初始化
+#### 一、初始化
 
-1、定义主命令
+##### 1、定义主命令
 
 基于Gobra组件构造主命令
 
@@ -17,7 +17,7 @@ var mainCmd = &cobra.Command{
 	Use: "peer"}
 ```
 
-2、注册子命令
+##### 2、注册子命令
 
 ```go
 func main() {
@@ -65,11 +65,9 @@ logging日志子命令: 用于获取、设置与恢复日志级别功能，包�
 
 version版本子命令：打印Hyperledger Fabric中的Peer节点服务器版本信息
 
-```
-// byfn展示
-```
+![1603346851237](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\1603346851237.png)
 
-二、初始化本地MSP组件
+#### 二、初始化本地MSP组件
 
 在每个子命令中，执行初始化本地MSP组件。
 
@@ -132,7 +130,7 @@ func InitCrypto(mspMgrConfigDir, localMSPID, localMSPType string) error {
 }
 ```
 
-三、执行启动Peer节点命令
+#### 三、执行启动Peer节点命令
 
 ```go
 func main() {
@@ -152,7 +150,7 @@ main()主函数通过Cobra组件调用主命令Execute()方法，执行peer node
 
 peer node start 主要流程：主要在start子命令执行server()函数。（函数实现在peer/node/start.go文件）
 
-1、初始化服务启动的基本参数
+##### 1、初始化服务启动的基本参数
 
 ```go
 func serve(args []string) error {
@@ -266,7 +264,7 @@ func initialize(initializer *Initializer) {
 
 代码已注释
 
-2、创建gRPC服务器
+##### 2、创建gRPC服务器
 
 ​      peer节点所有的服务器：
 
@@ -408,58 +406,222 @@ func server() {
 	privDataDist := func(channel string, txID string, privateData *transientstore.TxPvtReadWriteSetWithConfigInfo, blkHt uint64) error {
 		return service.GetGossipService().DistributePrivateData(channel, txID, privateData, blkHt)
 	}
-
-	signingIdentity := mgmt.GetLocalSigningIdentityOrPanic()
-	serializedIdentity, err := signingIdentity.Serialize()
-	if err != nil {
-		logger.Panicf("Failed serializing self identity: %v", err)
-	}
-
-	libConf := library.Config{}
-	if err = viperutil.EnhancedExactUnmarshalKey("peer.handlers", &libConf); err != nil {
-		return errors.WithMessage(err, "could not load YAML config")
-	}
-	reg := library.InitRegistry(libConf)
-
-	authFilters := reg.Lookup(library.Auth).([]authHandler.Filter)
-	endorserSupport := &endorser.SupportImpl{
-		SignerSupport:    signingIdentity,
-		Peer:             peer.Default,
-		PeerSupport:      peer.DefaultSupport,
-		ChaincodeSupport: chaincodeSupport,
-		SysCCProvider:    sccp,
-		ACLProvider:      aclProvider,
-	}
-	endorsementPluginsByName := reg.Lookup(library.Endorsement).(map[string]endorsement2.PluginFactory)
-	validationPluginsByName := reg.Lookup(library.Validation).(map[string]validation.PluginFactory)
-	signingIdentityFetcher := (endorsement3.SigningIdentityFetcher)(endorserSupport)
-	channelStateRetriever := endorser.ChannelStateRetriever(endorserSupport)
-	pluginMapper := endorser.MapBasedPluginMapper(endorsementPluginsByName)
-	pluginEndorser := endorser.NewPluginEndorser(&endorser.PluginSupport{
-		ChannelStateRetriever:   channelStateRetriever,
-		TransientStoreRetriever: peer.TransientStoreFactory,
-		PluginMapper:            pluginMapper,
-		SigningIdentityFetcher:  signingIdentityFetcher,
-	})
-	endorserSupport.PluginEndorser = pluginEndorser
+	...
+    // 读core.yaml的peer.handlers
+    ...
+    // 创建背书服务器
 	serverEndorser := endorser.NewEndorserServer(privDataDist, endorserSupport, pr)
+    // 将所有的消息过滤器构成过滤器链，返回第一个过滤器，serverEndorser是在链尾
+    auth := authHandler.ChainFilters(serverEndorser, authFilters...)
 	...
 }
 ```
 
-
-
 (5) 创建Gossip消息服务器
 
-3、部署系统链码与初始化现存通道的链结构
+Peer节点的Gossip消息服务器是基于Gossip消息协议分发数据与同步状态的，负责将区块数据与隐私数据发送到组织内的其他Peer节点。同时，Gossip消息服务器提供了节点管理机制、反熵算法等，支持同步更新节点信息与缺失的数据信息（区块数据与隐私数据）
+
+```go
+func server() {
+	...
+	policyMgr := peer.NewChannelPolicyManagerGetter()
+
+	// Initialize gossip component
+	err = initGossipService(policyMgr, peerServer, serializedIdentity, peerEndpoint.Address)
+	if err != nil {
+		return err
+	}
+	// 在退出时延迟调用该函数以停止Gossip消息服务器
+	defer service.GetGossipService().Stop()
+	...
+}
+```
+
+##### 3、部署系统链码与初始化现存通道的链结构
 
 (1) 部署系统链码initSysCCs()函数
 
+```go
+func server() {
+	// 部署系统链码（CSCC\LSCC\QSCC\VSCC\ESCC）
+	sccp.DeploySysCCs("", ccp)
+	logger.Infof("Deployed system chaincodes")
+	...
+}
+```
+
+部署系统链码
+
+```go
+func deploySysCC(chainID string, ccprov ccprovider.ChaincodeProvider, syscc SelfDescribingSysCC) error {
+    // 检查链码标志位是否开启，以及是否在白名单中
+	if !syscc.Enabled() || !isWhitelisted(syscc) {
+		...
+	}
+
+	txid := util.GenerateUUID()
+
+	// Note, this structure is barely initialized,
+	// we omit the history query executor, the proposal
+	// and the signed proposal
+	txParams := &ccprovider.TransactionParams{
+		TxID:      txid,
+		ChannelID: chainID,
+	}
+
+	if chainID != "" {
+		lgr := peer.GetLedger(chainID) // 获取指定账本对象
+		...
+		txsim, err := lgr.NewTxSimulator(txid)
+		if err != nil {
+			return err
+		}
+
+		txParams.TXSimulator = txsim
+		defer txsim.Done() // 释放交易模拟器占用的资源
+	}
+
+	chaincodeID := &pb.ChaincodeID{Path: syscc.Path(), Name: syscc.Name()}
+	spec := &pb.ChaincodeSpec{Type: pb.ChaincodeSpec_Type(pb.ChaincodeSpec_Type_value["GOLANG"]), ChaincodeId: chaincodeID, Input: &pb.ChaincodeInput{Args: syscc.InitArgs()}}
+
+	chaincodeDeploymentSpec := &pb.ChaincodeDeploymentSpec{ExecEnv: pb.ChaincodeDeploymentSpec_SYSTEM, ChaincodeSpec: spec}
+
+	// XXX This is an ugly hack, version should be tied to the chaincode instance, not he peer binary
+	version := util.GetSysCCVersion()
+
+	cccid := &ccprovider.CCContext{
+		Name:    chaincodeDeploymentSpec.ChaincodeSpec.ChaincodeId.Name,
+		Version: version,
+	}
+	// 部署系统链码
+	resp, _, err := ccprov.ExecuteLegacyInit(txParams, cccid, chaincodeDeploymentSpec)
+	if err == nil && resp.Status != shim.OK {
+		err = errors.New(resp.Message)
+	}
+
+	sysccLogger.Infof("system chaincode %s/%s(%s) deployed", syscc.Name(), chainID, syscc.Path())
+
+	return err
+}
+```
+
 (2) 初始化现存通道上的链结构Initialize()函数
 
-4、启动gRPC服务器与profile服务器
+```go
+func server() {
+	...
+	// this brings up all the channels
+	peer.Initialize(func(cid string) {
+		logger.Debugf("Deploying system CC, for channel <%s>", cid)
+		sccp.DeploySysCCs(cid, ccp)
+		sub, err := lifecycle.NewChannelSubscription(cid, cc.QueryCreatorFunc(func() (cc.Query, error) {
+			return peer.GetLedger(cid).NewQueryExecutor()
+		}))
+		if err != nil {
+			logger.Panicf("Failed subscribing to chaincode lifecycle updates")
+		}
+		cceventmgmt.GetMgr().Register(cid, sub)
+	}, ccp, sccp, txvalidator.MapBasedPluginMapper(validationPluginsByName),
+		pr, deployedCCInfoProvider, membershipInfoProvider, metricsProvider)
+		...
+}
+```
 
-5、初始化模块日志记录器
+```go
+func Initialize(init func(string), ccp ccprovider.ChaincodeProvider, sccp sysccprovider.SystemChaincodeProvider,
+	pm txvalidator.PluginMapper, pr *platforms.Registry, deployedCCInfoProvider ledger.DeployedChaincodeInfoProvider,
+	membershipProvider ledger.MembershipInfoProvider, metricsProvider metrics.Provider) {
+	nWorkers := viper.GetInt("peer.validatorPoolSize")
+	if nWorkers <= 0 {
+		nWorkers = runtime.NumCPU()
+	}
+	// 获取交易验证线程数量
+	validationWorkersSemaphore = semaphore.NewWeighted(int64(nWorkers))
+
+	pluginMapper = pm
+	chainInitializer = init
+
+	var cb *common.Block
+	var ledger ledger.PeerLedger
+	// 初始化账本服务器
+	ledgermgmt.Initialize(&ledgermgmt.Initializer{
+		CustomTxProcessors:            ConfigTxProcessors,
+		PlatformRegistry:              pr,
+		DeployedChaincodeInfoProvider: deployedCCInfoProvider,
+		MembershipInfoProvider:        membershipProvider,
+		MetricsProvider:               metricsProvider,
+	})
+	// 获取当前账本管理器下的账本ID列表
+	ledgerIds, err := ledgermgmt.GetLedgerIDs()
+	if err != nil {
+		panic(fmt.Errorf("Error in initializing ledgermgmt: %s", err))
+	}
+	for _, cid := range ledgerIds {
+	    // 遍历当前账本ID列表
+		peerLogger.Infof("Loading chain %s", cid)
+		// 创建本地PEER节点账本
+		if ledger, err = ledgermgmt.OpenLedger(cid); err != nil {
+			...
+			continue
+		}
+        // 从账本获取配置块
+		if cb, err = getCurrConfigBlockFromLedger(ledger); err != nil {
+			...
+			continue
+		}
+		// Create a chain if we get a valid ledger with config block
+		if err = createChain(cid, ledger, cb, ccp, sccp, pm); err != nil {			...
+			continue
+		}
+		// 用自定义函数初始化通道链结构，如部署系统链码
+		InitChain(cid)
+	}
+}
+```
+
+##### 4、启动gRPC服务器与profile服务器
+
+此时再执行4个goroutine，监听信号程序、grpc服务器、profile服务器等
+
+```go
+func server() {
+	...
+	if viper.GetBool("peer.discovery.enabled") {
+		registerDiscoveryService(peerServer, policyMgr, lifecycle)
+	}
+
+	networkID := viper.GetString("peer.networkId")
+	// 获取profile监听地址
+	profileEnabled := viper.GetBool("peer.profile.enabled")
+	profileListenAddress := viper.GetString("peer.profile.listenAddress")
+
+	// Start the grpc server. Done in a goroutine so we can deploy the
+	// genesis block if needed.
+	serve := make(chan error)
+
+	go func() {
+		var grpcErr error
+        // 启动grpc服务器
+		if grpcErr = peerServer.Start(); grpcErr != nil {
+			grpcErr = fmt.Errorf("grpc server exited with error: %s", grpcErr)
+		} else {
+			logger.Info("peer server exited")
+		}
+		serve <- grpcErr
+	}()
+
+	// Start profiling http endpoint if enabled
+	if profileEnabled {
+		go func() {
+			logger.Infof("Starting profiling server with listenAddress = %s", profileListenAddress)
+			if profileErr := http.ListenAndServe(profileListenAddress, nil); profileErr != nil {
+				logger.Errorf("Error starting profiler: %s", profileErr)
+			}
+		}()
+	}
+	...
+}
+```
 
 
 
