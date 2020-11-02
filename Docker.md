@@ -2,7 +2,7 @@
 
 ------
 
-一、/var/lib/docker/overlay2里面装的是什么
+#### 一、/var/lib/docker/overlay2里面装的是什么
 
 可以看到每个容器里面
 
@@ -128,5 +128,24 @@ overylay2占用12G,减少2G
 0	tmp
 0	trust
 37M	volumes
+```
+
+#### 二、Docker-copmose安装了怎么还是不能执行
+
+安装流程：
+
+```shell
+sudo curl -L "https://github.com/docker/compose/releases/download/1.22.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
+```
+
+但是docker-compose version还是出现命令找不到
+
+![1604287118310](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\1604287118310.png)
+
+执行以下命令即可解决
+
+```shell
+sudo ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose
 ```
 
