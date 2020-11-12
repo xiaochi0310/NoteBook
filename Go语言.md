@@ -77,3 +77,54 @@ func main() {
 ```
 
 定义成指针我们就可以识别空串，0等空值
+
+20201112补充
+
+对于字段中存在结构体类型,加omitempty字段的区别
+
+```go
+type Student struct {
+	Age  string `json:"age"`
+	Name []Name `json:"name,omitempty"` // omitempty
+}
+
+type Name struct {
+	first string `json:"first"`
+	next  string `json:"next"`
+}
+
+func main() {
+	data := `{
+	   "age": "9"
+	}`
+	payload := []byte(data)
+	var Student = new(Student)
+	err := json.Unmarshal(payload, Student)
+	if err == nil {
+		fmt.Println(Student)
+	} else {
+		fmt.Println(err)
+	}
+	stu, err := json.Marshal(Student)
+	fmt.Printf("%s", stu) // {"age":"9"}，忽略空字段
+    // 若不加omitempty {"age":"9","name":null}
+}
+```
+
+
+
+#### 2、数据类型的占位符
+
+```go
+	var i1 int = 1
+	var i2 int8 = 2
+	var i3 int16 = 3
+	var i4 int32 = 4
+	var i5 int64 = 5
+	fmt.Println(unsafe.Sizeof(i1)) // 8
+	fmt.Println(unsafe.Sizeof(i2)) // 1
+	fmt.Println(unsafe.Sizeof(i3)) // 2
+	fmt.Println(unsafe.Sizeof(i4)) // 4
+	fmt.Println(unsafe.Sizeof(i5)) // 8
+```
+
