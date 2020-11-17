@@ -13,3 +13,16 @@ sed -n '5p' main.go
 sed -n '5,10p' main.go
 ```
 
+字符串替换:全文替换将str1替换为str2
+
+```
+:%s/str1/str2/g
+```
+
+压缩解压
+
+```
+tar -zcvf pack.tar.gz pack/  #打包压缩为一个.gz格式的压缩包
+tar -zxvf pack.tar.gz /pack  #解包解压.gz格式的压缩包到pack文件夹
+```
+
