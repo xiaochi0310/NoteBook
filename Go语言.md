@@ -128,3 +128,14 @@ func main() {
 	fmt.Println(unsafe.Sizeof(i5)) // 8
 ```
 
+#### 3、init函数
+
+go语言的init函数，分2种情况：
+
+1>  引入包只为了使用包里面的init函数（如注册函数），此时需手动调用
+
+```
+import _"packageName“
+```
+
+2>  包里面的其他函数被其他包调用，此时该包的init无需手动调用，编译器会识别引用包里面的init函数
