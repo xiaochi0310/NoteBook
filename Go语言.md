@@ -139,3 +139,67 @@ import _"packageName“
 ```
 
 2>  包里面的其他函数被其他包调用，此时该包的init无需手动调用，编译器会识别引用包里面的init函数
+
+#### 4、闭包与匿名函数的区别与作用
+
+**匿名函数**：没有名字的函数。是为了开辟封闭的变量作用域环境。用于构造闭包
+
+```go
+func main() {
+    // 方法1
+	func() {
+		fmt.Println("hello1")
+	}()
+	// 方法2
+	fn := func() {
+		fmt.Println("hello2")
+	}
+	fn()
+	// 方法3
+	fn1 := func(str string) {
+		fmt.Println(str)
+	}
+	fn1("hello3")
+	// 方法4
+	fn2 := func() string {
+		return "hello4"
+	}
+	fmt.Println(fn2())
+}
+
+/*
+    hello1
+    hello2
+    hello3
+    hello4
+*/
+```
+
+**闭包**：利用匿名函数实现。可以在函数外部访问函数的变量，函数调用返回后一个没有释放资源的栈区。不需传值也在创建函数中使用自己的私有变量。闭包返回的是一个复合结构：包括匿名函数的地址以及变量的地址
+
+优点：减少代码量，使这些局部变量始终保存着内存中，避免使用全局变量
+缺点：这些局部变量不会立即销毁，浪费内存
+
+```go
+type Func func(x int) int //定义函数类型
+func A() Func { 
+	var i = 1
+	return func(a int) int{  // 闭包
+		i++
+		return a+i
+	}
+}
+
+func main() {
+	res := A() // res = A.func1 
+    fmt.Println(res(1)) // A.func1(1) = 3
+	fmt.Println(res(1)) // A.func1(1) = 4
+}
+```
+
+
+
+
+
+
+
