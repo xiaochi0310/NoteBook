@@ -197,7 +197,51 @@ func main() {
 }
 ```
 
+#### 5、range函数
 
+几个case 说明常见的问题
+
+```go
+func main() {
+	// case1
+	a := []int{100,200,300}
+	for _,v := range a {
+		a = append(a,v)
+	} // 注意这里不会无限循环下去
+	fmt.Println(a) // 1,2,3,1,2,3
+	// 解释：这里是因为汇编的时候，已经对数组的长度设定为局部变量，进行值传递
+	// case2
+	b := []int{100,200,300}
+	addr := []*int{}
+	for _,v := range b {
+		addr = append(addr,&v)
+	}
+	for _,address := range addr {
+		fmt.Println(address) // 0xc0000140e0 0xc0000140e0 0xc0000140e0
+	}
+	// 解释：这里也是汇编的时候，获取值的时候会把值赋给局部变量，相当于v的地址一直是局部变量的地址，所以最后输出的值也是一直不变的
+    // 对于所有的 range 循环，Go 语言都会在编译期间将原切片或者数组赋值给一个新的变量 ha，在赋值的过程中其实就发生了拷贝，所以我们遍历的切片其实已经不是原有的切片变量了
+	// 针对2的问题修改case2
+	b2 := []int{100,200,300}
+	addr2 := []*int{}
+	for i,_:= range b2 {
+		addr2 = append(addr2,&b2[i])
+	}
+	for _,address := range addr2 {
+		fmt.Println(address) // 0xc00000c3c0 0xc00000c3c8 0xc00000c3d0
+	}
+	// case3
+	c := map[int]int {
+		1:1,
+		2:2,
+		3:3,
+	}
+	for _,v := range c {
+		fmt.Println(v) // 不稳定会按照1,2,3顺序输出
+	}
+	// 解释：汇编过程中 会找一个随机的节点开始，这就是GO团队的设计
+}
+```
 
 
 
