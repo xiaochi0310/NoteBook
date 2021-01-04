@@ -243,7 +243,46 @@ func main() {
 }
 ```
 
+#### 6、斐波那契数列（使用select）
 
+```go
+func main() {
+    var c,stop chan int
+	c = make(chan int)
+	stop = make(chan int)
+	go func() {
+		fmt.Println("消费者开始")
+		for i:=0;i<5;i++ {
+			num := <-c
+			fmt.Println(num)
+		}
+		stop <- 0
+	}()
+	fmt.Println("生产者开始")
+	fibonacci(c,stop)
+}
+
+func fibonacci(c, stop chan int)  {
+	x,y := 0,1
+	for {
+        // 监听通道数据
+		select {
+		case c <- x:
+			fmt.Println("x =",x)
+			x,y = y,x+y
+		case <- stop:
+			fmt.Printf("stop")
+			return
+		}
+	}
+
+}
+```
+
+#### 7、Selsect
+
+1. `select` 能在 Channel 上进行非阻塞的收发操作；加上default分支即可，有时候我们不关系通道消息是否接收到，只在乎通道是否有错。
+2. `select` 在遇到多个 Channel 同时响应时会随机挑选 `case` 执行；
 
 
 
